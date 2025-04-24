@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QSerialPort>
 #include <QElapsedTimer>
+#include <QFile>
 #include "qcustomplot/qcustomplot.h"
 
 QT_BEGIN_NAMESPACE
@@ -20,17 +21,33 @@ public:
 
 private slots:
     void readData();
+    void onConnectClicked();
+    void onPlayStopClicked();
+    void onRecordClicked();
+    void onConfigClicked();
 
 private:
+    void updateAutorange(QCustomPlot *plot, const QVector<double> &data);
+
     Ui::MainWindow *ui;
     QSerialPort *serial;
-    QCustomPlot *plot1; // Canal 1
-    QCustomPlot *plot2; // Canal 2
+    QCustomPlot *plot1;
+    QCustomPlot *plot2;
     QByteArray buffer;
     QVector<double> xData, yData1, yData2;
+    QVector<double> allXData, allYData1, allYData2;
     double time;
     QElapsedTimer lastReplot;
     int sampleCounter;
+    bool isPlaying;
+    bool isRecording;
+    QFile *file;
+    bool invertCanal1;
+    bool invertCanal2;
+    bool autorangeCanal1;
+    bool autorangeCanal2;
+    double manualMinCanal1, manualMaxCanal1;
+    double manualMinCanal2, manualMaxCanal2;
 };
 
 #endif // MAINWINDOW_H
