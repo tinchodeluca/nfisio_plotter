@@ -51,8 +51,6 @@ MainWindow::~MainWindow()
 void MainWindow::readData()
 {
     buffer.append(serial->readAll());
-    qDebug() << "Datos recibidos (hex):" << buffer.toHex();
-
     const QByteArray header = QByteArray::fromHex("EFBEADDE");
     static int sampleCounter = 0;
 
@@ -69,8 +67,8 @@ void MainWindow::readData()
             return;
         }
 
-        qint32 canal1 = *(qint32*)(buffer.constData() + 4); // 4 bytes después del header
-        qint32 canal2 = *(qint32*)(buffer.constData() + 8); // 4 bytes después de canal1
+        qint32 canal1 = *(qint32*)(buffer.constData() + 4);
+        qint32 canal2 = *(qint32*)(buffer.constData() + 8);
         buffer.remove(0, 12);
 
         qDebug() << "Canal1:" << canal1 << "Canal2:" << canal2;
@@ -101,7 +99,8 @@ void MainWindow::readData()
         time += 0.001;
     }
 
-    if (buffer.size() > 1024) {
+    // Reducir acumulación en el buffer
+    if (buffer.size() > 512) {
         buffer.clear();
     }
 }
