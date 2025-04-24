@@ -1,4 +1,4 @@
-QT += core gui widgets serialport printsupport opengl openglwidgets
+QT += core gui widgets serialport printsupport opengl openglwidgets svg
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -26,3 +26,6 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 DEFINES += QCUSTOMPLOT_USE_OPENGL
 
 win32: LIBS += -lopengl32
+
+RESOURCES += \
+    resources.qrc

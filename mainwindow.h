@@ -7,6 +7,8 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QStatusBar>
+#include <QPushButton>
+#include <QSerialPortInfo> // Agregado para QSerialPortInfo
 
 namespace Ui {
 class MainWindow;
@@ -22,8 +24,8 @@ public:
 
 private slots:
     void readData();
-    void onConnectClicked();
-    void onPlayStopClicked();
+    void onConnectClicked(QPushButton *connectButton);
+    void onPlayStopClicked(QPushButton *playStopButton);
     void onRecordClicked();
     void onConfigClicked();
 

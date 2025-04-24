@@ -1,15 +1,17 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QSettings>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QPushButton>
+#include <QFileDialog>
+#include <QTextStream>
 #include <QDebug>
-#include <QSerialPortInfo>
+#include <QFormLayout>
 #include <QDialog>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QLineEdit>
-#include <QFormLayout>
-#include <QSettings>
-#include <QFileDialog>
-#include <QTemporaryFile>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -21,7 +23,7 @@ MainWindow::MainWindow(QWidget *parent)
     , sampleCounter(0)
     , isPlaying(false)
     , isRecording(false)
-    , file(new QTemporaryFile("tempXXXXXX.csv", this)) // Inicialización como QTemporaryFile
+    , file(new QTemporaryFile("tempXXXXXX.csv", this))
     , invertCanal1(false)
     , invertCanal2(false)
     , autorangeCanal1(true)
@@ -31,12 +33,11 @@ MainWindow::MainWindow(QWidget *parent)
     , manualMinCanal2(-1000)
     , manualMaxCanal2(1000)
     , headerTime("Tiempo")
-    , headerCanal1("ECG")
-    , headerCanal2("PPG")
+    , headerCanal1("Canal1")
+    , headerCanal2("Canal2")
 {
     ui->setupUi(this);
 
-    // Inicializar la barra de estado
     statusBar = new QStatusBar(this);
     setStatusBar(statusBar);
     statusBar->showMessage("Desconectado | Stopped | Not Recording");
@@ -50,10 +51,56 @@ MainWindow::MainWindow(QWidget *parent)
     connect(serial, &QSerialPort::readyRead, this, &MainWindow::readData);
 
     QHBoxLayout *buttonLayout = new QHBoxLayout;
-    QPushButton *connectButton = new QPushButton("Connect", this);
-    QPushButton *playStopButton = new QPushButton("Play/Stop", this);
-    QPushButton *recordButton = new QPushButton("Record", this);
-    QPushButton *configButton = new QPushButton("Config", this);
+    QPushButton *connectButton = new QPushButton(this);
+    QPushButton *playStopButton = new QPushButton(this);
+    QPushButton *recordButton = new QPushButton(this);
+    QPushButton *configButton = new QPushButton(this);
+
+    // Agregar iconos SVG directamente con QIcon
+    QSize iconSize(32, 32);
+    connectButton->setIcon(QIcon(":/icons/link-solid.svg"));
+    playStopButton->setIcon(QIcon(":/icons/play-solid.svg"));
+    recordButton->setIcon(QIcon(":/icons/floppy-disk-solid.svg"));
+    configButton->setIcon(QIcon(":/icons/gears-solid.svg"));
+
+    // Aplicar estilos CSS a los botones: fondo transparente, iconos blancos, texto oculto por defecto
+    QString buttonStyle = R"(
+        QPushButton {
+            background-color: transparent; /* Sin fondo */
+            border: none; /* Sin bordes */
+            padding: 5px;
+            min-width: 40px;
+            min-height: 40px;
+        }
+        QPushButton:hover {
+            background-color: rgba(200, 200, 200, 50); /* Fondo gris claro al pasar el mouse */
+        }
+        QPushButton:pressed {
+            background-color: rgba(150, 150, 150, 100); /* Fondo gris un poco más oscuro al presionar */
+        }
+        QPushButton::text {
+            color: transparent; /* Ocultar el texto por defecto */
+        }
+        QPushButton:hover::text {
+            color: white; /* Mostrar el texto al pasar el mouse */
+        }
+    )";
+    connectButton->setStyleSheet(buttonStyle);
+    playStopButton->setStyleSheet(buttonStyle);
+    recordButton->setStyleSheet(buttonStyle);
+    configButton->setStyleSheet(buttonStyle);
+
+    // Mostrar el icono en el botón y asignar el texto (que se mostrará en hover)
+    connectButton->setIconSize(iconSize);
+    playStopButton->setIconSize(iconSize);
+    recordButton->setIconSize(iconSize);
+    configButton->setIconSize(iconSize);
+/*
+    connectButton->setText("Connect");
+    playStopButton->setText("Play/Stop");
+    recordButton->setText("Record");
+    configButton->setText("Config");*/
+
     buttonLayout->addWidget(connectButton);
     buttonLayout->addWidget(playStopButton);
     buttonLayout->addWidget(recordButton);
@@ -67,8 +114,8 @@ MainWindow::MainWindow(QWidget *parent)
     container->setLayout(mainLayout);
     setCentralWidget(container);
 
-    connect(connectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
-    connect(playStopButton, &QPushButton::clicked, this, &MainWindow::onPlayStopClicked);
+    connect(connectButton, &QPushButton::clicked, this, [this, connectButton]() { onConnectClicked(connectButton); });
+    connect(playStopButton, &QPushButton::clicked, this, [this, playStopButton]() { onPlayStopClicked(playStopButton); });
     connect(recordButton, &QPushButton::clicked, this, &MainWindow::onRecordClicked);
     connect(configButton, &QPushButton::clicked, this, &MainWindow::onConfigClicked);
 
@@ -80,7 +127,8 @@ MainWindow::MainWindow(QWidget *parent)
     plot1->yAxis->setRange(manualMinCanal1, manualMaxCanal1);
     plot1->setInteraction(QCP::iRangeDrag, true);
     plot1->setInteraction(QCP::iRangeZoom, true);
-    plot1->setOpenGl(true);
+    plot1->setOpenGl(false);
+    plot1->setBackground(QBrush(QColor(255, 220, 220)));
 
     plot2->addGraph();
     plot2->graph(0)->setPen(QPen(Qt::red));
@@ -90,203 +138,58 @@ MainWindow::MainWindow(QWidget *parent)
     plot2->yAxis->setRange(manualMinCanal2, manualMaxCanal2);
     plot2->setInteraction(QCP::iRangeDrag, true);
     plot2->setInteraction(QCP::iRangeZoom, true);
-    plot2->setOpenGl(true);
+    plot2->setOpenGl(false);
+    plot2->setBackground(QBrush(QColor(255, 220, 220)));
 
     lastReplot.start();
 }
+
 MainWindow::~MainWindow()
 {
-    serial->close();
-    if (file->isOpen()) {
-        file->close();
-    }
-    delete file;
     delete ui;
-}
-
-void MainWindow::readData()
-{
-    if (!isPlaying) return;
-
-    buffer.append(serial->readAll());
-    //qDebug() << "Datos recibidos (hex):" << buffer.toHex();
-
-    const QByteArray header = QByteArray::fromHex("EFBEADDE");
-
-    while (buffer.size() >= 12) {
-        int headerPos = buffer.indexOf(header);
-        if (headerPos == -1) {
-            buffer.clear();
-            return;
-        }
-        if (headerPos > 0) {
-            buffer.remove(0, headerPos);
-        }
-        if (buffer.size() < 12) {
-            return;
-        }
-
-        qint32 canal1 = *(qint32*)(buffer.constData() + 4);
-        qint32 canal2 = *(qint32*)(buffer.constData() + 8);
-        buffer.remove(0, 12);
-
-        canal1 = invertCanal1 ? -canal1 : canal1;
-        canal2 = invertCanal2 ? -canal2 : canal2;
-
-       // qDebug() << "Canal1:" << canal1 << "Canal2:" << canal2;
-
-        allXData.append(time);
-        allYData1.append(canal1);
-        allYData2.append(canal2);
-
-        sampleCounter++;
-        if (sampleCounter % 10 == 0) {
-            xData.append(time);
-            yData1.append(canal1);
-            yData2.append(canal2);
-
-            const int maxPoints = 1000;
-            if (xData.size() > maxPoints) {
-                xData.remove(0, xData.size() - maxPoints);
-                yData1.remove(0, yData1.size() - maxPoints);
-                yData2.remove(0, yData2.size() - maxPoints);
-            }
-
-            // Forzar la actualización de los datos
-            plot1->graph(0)->setData(xData, yData1, true);
-            plot2->graph(0)->setData(xData, yData2, true);
-            plot1->xAxis->setRange(time - 10, time);
-            plot2->xAxis->setRange(time - 10, time);
-
-            if (autorangeCanal1) updateAutorange(plot1, yData1);
-            if (autorangeCanal2) updateAutorange(plot2, yData2);
-
-            if (lastReplot.elapsed() >= 50) {
-                plot1->replot(); // Reploteo con prioridad
-                plot2->replot(); // Reploteo con prioridad
-                lastReplot.restart();
-            }
-        }
-
-        if (isRecording && file->isOpen()) {
-            QTextStream stream(file);
-            stream << time << "," << canal1 << "," << canal2 << "\n";
-            file->flush();
-        }
-
-        time += 0.001;
-    }
-
-    if (buffer.size() > 512) {
-        buffer.clear();
-    }
-}
-
-void MainWindow::updateAutorange(QCustomPlot *plot, const QVector<double> &data)
-{
-    if (data.isEmpty()) return;
-
-    // Ignorar las primeras 100 muestras (como ajustaste)
-    const int ignoreInitialPoints = 100;
-    const int windowSize = 1000; // Ventana para calcular el rango
-
-    // Comenzar después de los puntos iniciales
-    int start = qMax(ignoreInitialPoints, data.size() - windowSize);
-    QVector<double> windowData;
-    for (int i = start; i < data.size(); ++i) {
-        windowData.append(data[i]);
-    }
-
-    if (windowData.isEmpty()) return;
-
-    // Ordenar los datos para calcular percentiles y descartar picos
-    std::sort(windowData.begin(), windowData.end());
-
-    // Usar percentil 5 y 95 para descartar valores extremos
-    int lowerIndex = windowData.size() * 0.05; // Percentil 5
-    int upperIndex = windowData.size() * 0.95; // Percentil 95
-    double minVal = windowData[lowerIndex];
-    double maxVal = windowData[upperIndex];
-
-    // Calcular el promedio para centrar el rango
-    double sum = 0;
-    int count = 0;
-    for (int i = lowerIndex; i <= upperIndex; ++i) {
-        sum += windowData[i];
-        count++;
-    }
-    double avg = sum / count;
-
-    // Centrar el rango en el promedio con un margen basado en la distancia al min/max
-    double rangeToMin = avg - minVal;
-    double rangeToMax = maxVal - avg;
-    double halfRange = qMax(rangeToMin, rangeToMax); // Tomar el mayor para simetría
-    double margin = halfRange * 0.1; // Margen del 10%
-    plot->yAxis->setRange(avg - halfRange - margin, avg + halfRange + margin);
-}
-
-void MainWindow::onConnectClicked()
-{
     if (serial->isOpen()) {
         serial->close();
-        qDebug() << "Puerto cerrado";
-        statusBar->showMessage("Desconectado | " + QString(isPlaying ? "Playing" : "Stopped") + " | " + QString(isRecording ? "Recording" : "Not Recording"));
+    }
+    delete serial;
+}
+
+void MainWindow::onConnectClicked(QPushButton *connectButton)
+{
+    QSize iconSize(32, 32);
+    if (serial->isOpen()) {
+        serial->close();
+        connectButton->setIcon(QIcon(":/icons/link-solid.svg"));
     } else {
         if (serial->open(QIODevice::ReadOnly)) {
-            qDebug() << "Puerto abierto correctamente";
-            statusBar->showMessage("Conectado | " + QString(isPlaying ? "Playing" : "Stopped") + " | " + QString(isRecording ? "Recording" : "Not Recording"));
+            connectButton->setIcon(QIcon(":/icons/link-slash-solid.svg"));
         } else {
-            qDebug() << "Error al abrir puerto:" << serial->errorString();
-            statusBar->showMessage("Error al conectar | " + QString(isPlaying ? "Playing" : "Stopped") + " | " + QString(isRecording ? "Recording" : "Not Recording"));
+            statusBar->showMessage("Error al conectar: " + serial->errorString());
+            return;
         }
     }
+    connectButton->setIconSize(iconSize);
+    statusBar->showMessage(QString("%1 | %2 | %3")
+                               .arg(serial->isOpen() ? "Conectado" : "Desconectado")
+                               .arg(isPlaying ? "Playing" : "Stopped")
+                               .arg(isRecording ? "Recording" : "Not Recording"));
 }
 
-void MainWindow::onPlayStopClicked()
+void MainWindow::onPlayStopClicked(QPushButton *playStopButton)
 {
     isPlaying = !isPlaying;
-    qDebug() << "Play/Stop:" << (isPlaying ? "Playing" : "Stopped");
-    statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | " + (isRecording ? "Recording" : "Not Recording"));
+    QSize iconSize(32, 32);
     if (isPlaying) {
-        lastReplot.start();
-    }
-}
-
-
-void MainWindow::onRecordClicked()
-{
-    if (isRecording) {
-        isRecording = false;
-        if (file->isOpen()) {
-            file->close();
-        }
-        qDebug() << "Grabación detenida";
-
-        // Pedir nombre para guardar el archivo
-        QString fileName = QFileDialog::getSaveFileName(this, "Guardar grabación", "", "Archivos CSV (*.csv)");
-        if (!fileName.isEmpty()) {
-            QFile::copy(file->fileName(), fileName); // Copiar el archivo temporal al destino
-        }
-
-        statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | Not Recording");
+        playStopButton->setIcon(QIcon(":/icons/stop-solid.svg"));
     } else {
-        isRecording = true;
-        // Usar un archivo temporal
-        delete file; // Eliminar el archivo anterior
-        file = new QTemporaryFile("tempXXXXXX.csv", this);
-        if (file->open(QIODevice::WriteOnly | QIODevice::Text)) { // Abrir con modo explícito
-            QTextStream stream(file);
-            stream << headerTime << "," << headerCanal1 << "," << headerCanal2 << "\n";
-            qDebug() << "Grabación iniciada en archivo temporal:" << file->fileName();
-            statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | Recording");
-        } else {
-            qDebug() << "Error al abrir archivo temporal:" << file->errorString();
-            isRecording = false;
-            delete file;
-            file = nullptr;
-        }
+        playStopButton->setIcon(QIcon(":/icons/play-solid.svg"));
     }
+    playStopButton->setIconSize(iconSize);
+    statusBar->showMessage(QString("%1 | %2 | %3")
+                               .arg(serial->isOpen() ? "Conectado" : "Desconectado")
+                               .arg(isPlaying ? "Playing" : "Stopped")
+                               .arg(isRecording ? "Recording" : "Not Recording"));
 }
+
 void MainWindow::onConfigClicked()
 {
     QDialog configDialog(this);
@@ -357,18 +260,45 @@ void MainWindow::onConfigClicked()
         settings.setValue("lastPort", portCombo->currentText());
         settings.setValue("lastBaud", baudCombo->currentText().toInt());
 
+        // Si el puerto está abierto, ciérralo para aplicar los nuevos ajustes
+        if (serial->isOpen()) {
+            serial->close();
+        }
         serial->setPortName(portCombo->currentText());
         serial->setBaudRate(baudCombo->currentText().toInt());
+        // Reabre el puerto si estaba conectado
+        if (statusBar->currentMessage().contains("Conectado")) {
+            if (!serial->open(QIODevice::ReadOnly)) {
+                statusBar->showMessage("Error al reconectar: " + serial->errorString());
+            }
+        }
 
         invertCanal1 = invertCanal1Check->isChecked();
         invertCanal2 = invertCanal2Check->isChecked();
         autorangeCanal1 = autorangeCanal1Check->isChecked();
         autorangeCanal2 = autorangeCanal2Check->isChecked();
 
-        manualMinCanal1 = minCanal1Edit->text().toDouble();
-        manualMaxCanal1 = maxCanal1Edit->text().toDouble();
-        manualMinCanal2 = minCanal2Edit->text().toDouble();
-        manualMaxCanal2 = maxCanal2Edit->text().toDouble();
+        // Validar y actualizar los rangos manuales
+        bool ok;
+        double newMinCanal1 = minCanal1Edit->text().toDouble(&ok);
+        if (ok) manualMinCanal1 = newMinCanal1;
+
+        double newMaxCanal1 = maxCanal1Edit->text().toDouble(&ok);
+        if (ok) manualMaxCanal1 = newMaxCanal1;
+
+        double newMinCanal2 = minCanal2Edit->text().toDouble(&ok);
+        if (ok) manualMinCanal2 = newMinCanal2;
+
+        double newMaxCanal2 = maxCanal2Edit->text().toDouble(&ok);
+        if (ok) manualMaxCanal2 = newMaxCanal2;
+
+        // Asegurarse de que el rango sea válido (mínimo < máximo)
+        if (manualMinCanal1 >= manualMaxCanal1) {
+            manualMinCanal1 = manualMaxCanal1 - 1;
+        }
+        if (manualMinCanal2 >= manualMaxCanal2) {
+            manualMinCanal2 = manualMaxCanal2 - 1;
+        }
 
         if (!autorangeCanal1) {
             plot1->yAxis->setRange(manualMinCanal1, manualMaxCanal1);
@@ -377,5 +307,132 @@ void MainWindow::onConfigClicked()
             plot2->yAxis->setRange(manualMinCanal2, manualMaxCanal2);
         }
 
+        // Actualizar las cabeceras
+        headerTime = headerTimeEdit->text().isEmpty() ? "Tiempo" : headerTimeEdit->text();
+        headerCanal1 = headerCanal1Edit->text().isEmpty() ? "Canal1" : headerCanal1Edit->text();
+        headerCanal2 = headerCanal2Edit->text().isEmpty() ? "Canal2" : headerCanal2Edit->text();
     }
+}
+
+void MainWindow::readData()
+{
+    if (!isPlaying) return;
+
+    buffer.append(serial->readAll());
+    //qDebug() << "Datos recibidos (hex):" << buffer.toHex();
+
+    const QByteArray header = QByteArray::fromHex("EFBEADDE");
+
+    while (buffer.size() >= 12) {
+        int headerPos = buffer.indexOf(header);
+        if (headerPos == -1) {
+            buffer.clear();
+            return;
+        }
+        if (headerPos > 0) {
+            buffer.remove(0, headerPos);
+        }
+        if (buffer.size() < 12) {
+            return;
+        }
+
+        qint32 canal1 = *(qint32*)(buffer.constData() + 4);
+        qint32 canal2 = *(qint32*)(buffer.constData() + 8);
+        buffer.remove(0, 12);
+
+        canal1 = invertCanal1 ? -canal1 : canal1;
+        canal2 = invertCanal2 ? -canal2 : canal2;
+
+        //qDebug() << "Canal1:" << canal1 << "Canal2:" << canal2;
+
+        allXData.append(time);
+        allYData1.append(canal1);
+        allYData2.append(canal2);
+
+        sampleCounter++;
+        if (sampleCounter % 10 == 0) {
+            xData.append(time);
+            yData1.append(canal1);
+            yData2.append(canal2);
+
+            const int maxPoints = 10000;
+            if (xData.size() > maxPoints) {
+                xData.remove(0, xData.size() - maxPoints);
+                yData1.remove(0, yData1.size() - maxPoints);
+                yData2.remove(0, yData2.size() - maxPoints);
+            }
+
+            QVector<double> shiftedXData;
+            double windowSize = 10.0;
+            double latestTime = xData.last();
+            for (int i = 0; i < xData.size(); ++i) {
+                double shiftedX = xData[i] - (latestTime - windowSize);
+                while (shiftedX < 0) shiftedX += windowSize;
+                while (shiftedX > windowSize) shiftedX -= windowSize;
+                shiftedXData.append(shiftedX);
+            }
+
+            plot1->graph(0)->setData(shiftedXData, yData1, true);
+            plot2->graph(0)->setData(shiftedXData, yData2, true);
+
+            plot1->xAxis->setRange(0, windowSize);
+            plot2->xAxis->setRange(0, windowSize);
+
+            if (autorangeCanal1) updateAutorange(plot1, yData1);
+            if (autorangeCanal2) updateAutorange(plot2, yData2);
+
+            if (lastReplot.elapsed() >= 50) {
+                plot1->replot();
+                plot2->replot();
+                lastReplot.restart();
+            }
+        }
+
+        if (isRecording && file->isOpen()) {
+            QTextStream stream(file);
+            stream << time << "," << canal1 << "," << canal2 << "\n";
+            file->flush();
+        }
+
+        time += 0.001;
+    }
+
+    if (buffer.size() > 512) {
+        buffer.clear();
+    }
+}
+
+void MainWindow::onRecordClicked()
+{
+    if (isRecording) {
+        isRecording = false;
+        if (file->isOpen()) {
+            file->close();
+        }
+        QString savePath = QFileDialog::getSaveFileName(this, "Guardar datos", "", "CSV Files (*.csv)");
+        if (!savePath.isEmpty()) {
+            QFile::copy(file->fileName(), savePath);
+        }
+    } else {
+        if (!file->open(QIODevice::WriteOnly | QIODevice::Text)) {
+            statusBar->showMessage("Error al abrir archivo temporal");
+            return;
+        }
+        isRecording = true;
+        QTextStream stream(file);
+        stream << headerTime << "," << headerCanal1 << "," << headerCanal2 << "\n";
+    }
+    statusBar->showMessage(QString("%1 | %2 | %3")
+                               .arg(serial->isOpen() ? "Conectado" : "Desconectado")
+                               .arg(isPlaying ? "Playing" : "Stopped")
+                               .arg(isRecording ? "Recording" : "Not Recording"));
+}
+
+void MainWindow::updateAutorange(QCustomPlot *plot, const QVector<double> &data)
+{
+    if (data.isEmpty()) return;
+    double min = *std::min_element(data.constBegin(), data.constEnd());
+    double max = *std::max_element(data.constBegin(), data.constEnd());
+    double range = max - min;
+    plot->yAxis->setRange(min - range * 0.1, max + range * 0.1);
 }
