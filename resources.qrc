@@ -6,5 +6,6 @@
         <file>icons/link-solid.svg</file>
         <file>icons/play-solid.svg</file>
         <file>icons/stop-solid.svg</file>
+		<file>icons/wave-square-solid.svg</file>
     </qresource>
 </RCC>

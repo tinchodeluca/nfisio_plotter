@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QLineEdit>
 
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -35,6 +36,10 @@ MainWindow::MainWindow(QWidget *parent)
     , headerTime("Tiempo")
     , headerCanal1("Canal1")
     , headerCanal2("Canal2")
+    , connectIcon(QIcon(":/icons/link-solid.svg"))
+    , disconnectIcon(QIcon(":/icons/link-slash-solid.svg"))
+    , playIcon(QIcon(":/icons/play-solid.svg"))
+    , stopIcon(QIcon(":/icons/stop-solid.svg"))
 {
     ui->setupUi(this);
 
@@ -54,6 +59,7 @@ MainWindow::MainWindow(QWidget *parent)
     QPushButton *connectButton = new QPushButton(this);
     QPushButton *playStopButton = new QPushButton(this);
     QPushButton *recordButton = new QPushButton(this);
+    QPushButton *signalsButton = new QPushButton(this);
     QPushButton *configButton = new QPushButton(this);
 
     // Agregar iconos SVG directamente con QIcon
@@ -61,49 +67,48 @@ MainWindow::MainWindow(QWidget *parent)
     connectButton->setIcon(QIcon(":/icons/link-solid.svg"));
     playStopButton->setIcon(QIcon(":/icons/play-solid.svg"));
     recordButton->setIcon(QIcon(":/icons/floppy-disk-solid.svg"));
+    signalsButton->setIcon(QIcon(":/icons/wave-square-solid.svg")); // Cambiado a wave-square-solid.svg
     configButton->setIcon(QIcon(":/icons/gears-solid.svg"));
 
-    // Aplicar estilos CSS a los botones: fondo transparente, iconos blancos, texto oculto por defecto
+    // Aplicar estilos CSS a los botones
     QString buttonStyle = R"(
         QPushButton {
-            background-color: transparent; /* Sin fondo */
-            border: none; /* Sin bordes */
+            background-color: transparent;
+            border: none;
             padding: 5px;
             min-width: 40px;
             min-height: 40px;
         }
         QPushButton:hover {
-            background-color: rgba(200, 200, 200, 50); /* Fondo gris claro al pasar el mouse */
+            background-color: rgba(200, 200, 200, 50);
         }
         QPushButton:pressed {
-            background-color: rgba(150, 150, 150, 100); /* Fondo gris un poco más oscuro al presionar */
-        }
-        QPushButton::text {
-            color: transparent; /* Ocultar el texto por defecto */
-        }
-        QPushButton:hover::text {
-            color: white; /* Mostrar el texto al pasar el mouse */
+            background-color: rgba(150, 150, 150, 100);
         }
     )";
     connectButton->setStyleSheet(buttonStyle);
     playStopButton->setStyleSheet(buttonStyle);
     recordButton->setStyleSheet(buttonStyle);
+    signalsButton->setStyleSheet(buttonStyle);
     configButton->setStyleSheet(buttonStyle);
 
-    // Mostrar el icono en el botón y asignar el texto (que se mostrará en hover)
     connectButton->setIconSize(iconSize);
     playStopButton->setIconSize(iconSize);
     recordButton->setIconSize(iconSize);
+    signalsButton->setIconSize(iconSize);
     configButton->setIconSize(iconSize);
-/*
-    connectButton->setText("Connect");
-    playStopButton->setText("Play/Stop");
-    recordButton->setText("Record");
-    configButton->setText("Config");*/
+
+    connectButton->setToolTip("Connect");
+    playStopButton->setToolTip("Play/Stop");
+    recordButton->setToolTip("Record");
+    signalsButton->setToolTip("Send Command");
+    configButton->setToolTip("Config");
 
     buttonLayout->addWidget(connectButton);
     buttonLayout->addWidget(playStopButton);
     buttonLayout->addWidget(recordButton);
+    buttonLayout->addWidget(signalsButton);
+    buttonLayout->addStretch();
     buttonLayout->addWidget(configButton);
 
     QVBoxLayout *mainLayout = new QVBoxLayout;
@@ -114,9 +119,12 @@ MainWindow::MainWindow(QWidget *parent)
     container->setLayout(mainLayout);
     setCentralWidget(container);
 
+    container->setStyleSheet("background-color: #111111ff;");
+
     connect(connectButton, &QPushButton::clicked, this, [this, connectButton]() { onConnectClicked(connectButton); });
     connect(playStopButton, &QPushButton::clicked, this, [this, playStopButton]() { onPlayStopClicked(playStopButton); });
     connect(recordButton, &QPushButton::clicked, this, &MainWindow::onRecordClicked);
+    connect(signalsButton, &QPushButton::clicked, this, &MainWindow::onSignalsClicked);
     connect(configButton, &QPushButton::clicked, this, &MainWindow::onConfigClicked);
 
     plot1->addGraph();
@@ -128,7 +136,7 @@ MainWindow::MainWindow(QWidget *parent)
     plot1->setInteraction(QCP::iRangeDrag, true);
     plot1->setInteraction(QCP::iRangeZoom, true);
     plot1->setOpenGl(false);
-    plot1->setBackground(QBrush(QColor(255, 220, 220)));
+    plot1->setBackground(QBrush(QColor("#faf8f8ff")));
 
     plot2->addGraph();
     plot2->graph(0)->setPen(QPen(Qt::red));
@@ -139,7 +147,7 @@ MainWindow::MainWindow(QWidget *parent)
     plot2->setInteraction(QCP::iRangeDrag, true);
     plot2->setInteraction(QCP::iRangeZoom, true);
     plot2->setOpenGl(false);
-    plot2->setBackground(QBrush(QColor(255, 220, 220)));
+    plot2->setBackground(QBrush(QColor("#faf8f8ff")));
 
     lastReplot.start();
 }
@@ -158,10 +166,10 @@ void MainWindow::onConnectClicked(QPushButton *connectButton)
     QSize iconSize(32, 32);
     if (serial->isOpen()) {
         serial->close();
-        connectButton->setIcon(QIcon(":/icons/link-solid.svg"));
+        connectButton->setIcon(connectIcon);
     } else {
         if (serial->open(QIODevice::ReadOnly)) {
-            connectButton->setIcon(QIcon(":/icons/link-slash-solid.svg"));
+            connectButton->setIcon(disconnectIcon);
         } else {
             statusBar->showMessage("Error al conectar: " + serial->errorString());
             return;
@@ -173,15 +181,14 @@ void MainWindow::onConnectClicked(QPushButton *connectButton)
                                .arg(isPlaying ? "Playing" : "Stopped")
                                .arg(isRecording ? "Recording" : "Not Recording"));
 }
-
 void MainWindow::onPlayStopClicked(QPushButton *playStopButton)
 {
     isPlaying = !isPlaying;
     QSize iconSize(32, 32);
     if (isPlaying) {
-        playStopButton->setIcon(QIcon(":/icons/stop-solid.svg"));
+        playStopButton->setIcon(stopIcon);
     } else {
-        playStopButton->setIcon(QIcon(":/icons/play-solid.svg"));
+        playStopButton->setIcon(playIcon);
     }
     playStopButton->setIconSize(iconSize);
     statusBar->showMessage(QString("%1 | %2 | %3")
@@ -195,62 +202,124 @@ void MainWindow::onConfigClicked()
     QDialog configDialog(this);
     configDialog.setWindowTitle("Configuración");
 
-    QFormLayout *layout = new QFormLayout;
+    // Layout principal del diálogo
+    QVBoxLayout *mainLayout = new QVBoxLayout;
+
+    // Sección 1: Conexión Serial
+    QGroupBox *serialGroup = new QGroupBox("Conexión Serial");
+    QFormLayout *serialLayout = new QFormLayout;
 
     QComboBox *portCombo = new QComboBox;
     foreach (const QSerialPortInfo &info, QSerialPortInfo::availablePorts()) {
         portCombo->addItem(info.portName());
     }
     portCombo->setCurrentText(serial->portName());
-    layout->addRow("Puerto:", portCombo);
+    serialLayout->addRow("Puerto:", portCombo);
 
     QComboBox *baudCombo = new QComboBox;
     baudCombo->addItems({"9600", "19200", "38400", "57600", "115200", "230400"});
     baudCombo->setCurrentText(QString::number(serial->baudRate()));
-    layout->addRow("Baud Rate:", baudCombo);
+    serialLayout->addRow("Baud Rate:", baudCombo);
+
+    serialGroup->setLayout(serialLayout);
+    mainLayout->addWidget(serialGroup);
+
+    // Sección 2: Configuración de Canales
+    QGroupBox *channelsGroup = new QGroupBox("Configuración de Canales");
+    QFormLayout *channelsLayout = new QFormLayout;
 
     QCheckBox *invertCanal1Check = new QCheckBox("Invertir Canal 1");
     invertCanal1Check->setChecked(invertCanal1);
-    layout->addRow(invertCanal1Check);
+    channelsLayout->addRow(invertCanal1Check);
 
     QCheckBox *invertCanal2Check = new QCheckBox("Invertir Canal 2");
     invertCanal2Check->setChecked(invertCanal2);
-    layout->addRow(invertCanal2Check);
+    channelsLayout->addRow(invertCanal2Check);
 
     QCheckBox *autorangeCanal1Check = new QCheckBox("Autorange Canal 1");
     autorangeCanal1Check->setChecked(autorangeCanal1);
-    layout->addRow(autorangeCanal1Check);
+    channelsLayout->addRow(autorangeCanal1Check);
 
     QCheckBox *autorangeCanal2Check = new QCheckBox("Autorange Canal 2");
     autorangeCanal2Check->setChecked(autorangeCanal2);
-    layout->addRow(autorangeCanal2Check);
+    channelsLayout->addRow(autorangeCanal2Check);
 
     QLineEdit *minCanal1Edit = new QLineEdit(QString::number(manualMinCanal1));
     QLineEdit *maxCanal1Edit = new QLineEdit(QString::number(manualMaxCanal1));
-    layout->addRow("Canal 1 Mín:", minCanal1Edit);
-    layout->addRow("Canal 1 Máx:", maxCanal1Edit);
+    channelsLayout->addRow("Canal 1 Mín:", minCanal1Edit);
+    channelsLayout->addRow("Canal 1 Máx:", maxCanal1Edit);
 
     QLineEdit *minCanal2Edit = new QLineEdit(QString::number(manualMinCanal2));
     QLineEdit *maxCanal2Edit = new QLineEdit(QString::number(manualMaxCanal2));
-    layout->addRow("Canal 2 Mín:", minCanal2Edit);
-    layout->addRow("Canal 2 Máx:", maxCanal2Edit);
+    channelsLayout->addRow("Canal 2 Mín:", minCanal2Edit);
+    channelsLayout->addRow("Canal 2 Máx:", maxCanal2Edit);
 
-    // Nuevos campos para las cabeceras
+    channelsGroup->setLayout(channelsLayout);
+    mainLayout->addWidget(channelsGroup);
+
+    // Sección 3: Exportación de Datos
+    QGroupBox *exportGroup = new QGroupBox("Exportación de Datos");
+    QFormLayout *exportLayout = new QFormLayout;
+
     QLineEdit *headerTimeEdit = new QLineEdit(headerTime);
     QLineEdit *headerCanal1Edit = new QLineEdit(headerCanal1);
     QLineEdit *headerCanal2Edit = new QLineEdit(headerCanal2);
-    layout->addRow("Cabecera Tiempo:", headerTimeEdit);
-    layout->addRow("Cabecera ECG:", headerCanal1Edit);
-    layout->addRow("Cabecera PPG:", headerCanal2Edit);
+    exportLayout->addRow("Cabecera Tiempo:", headerTimeEdit);
+    exportLayout->addRow("Cabecera ECG:", headerCanal1Edit);
+    exportLayout->addRow("Cabecera PPG:", headerCanal2Edit);
 
+    exportGroup->setLayout(exportLayout);
+    mainLayout->addWidget(exportGroup);
+
+    // Botones Aceptar/Cancelar
     QPushButton *okButton = new QPushButton("Aceptar");
     QPushButton *cancelButton = new QPushButton("Cancelar");
     QHBoxLayout *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch(); // Espaciador para alinear los botones a la derecha
     buttonLayout->addWidget(okButton);
     buttonLayout->addWidget(cancelButton);
-    layout->addRow(buttonLayout);
+    mainLayout->addLayout(buttonLayout);
 
-    configDialog.setLayout(layout);
+    // Estilos CSS para el diálogo
+    configDialog.setStyleSheet(R"(
+        QDialog {
+            background-color: #FAF8F8;
+        }
+        QGroupBox {
+            font-weight: bold;
+            border: 1px solid #CCC;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            padding: 0 3px;
+            left: 10px;
+        }
+        QComboBox, QLineEdit, QCheckBox {
+            padding: 5px;
+        }
+        QComboBox, QLineEdit {
+            border: 1px solid #CCC;
+            border-radius: 3px;
+        }
+        QPushButton {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            background-color: #55ACEE;
+            color: white;
+        }
+        QPushButton:hover {
+            background-color: #4A9CD6;
+        }
+        QPushButton:pressed {
+            background-color: #4088C2;
+        }
+    )");
+
+    configDialog.setLayout(mainLayout);
 
     connect(okButton, &QPushButton::clicked, &configDialog, &QDialog::accept);
     connect(cancelButton, &QPushButton::clicked, &configDialog, &QDialog::reject);
@@ -260,13 +329,11 @@ void MainWindow::onConfigClicked()
         settings.setValue("lastPort", portCombo->currentText());
         settings.setValue("lastBaud", baudCombo->currentText().toInt());
 
-        // Si el puerto está abierto, ciérralo para aplicar los nuevos ajustes
         if (serial->isOpen()) {
             serial->close();
         }
         serial->setPortName(portCombo->currentText());
         serial->setBaudRate(baudCombo->currentText().toInt());
-        // Reabre el puerto si estaba conectado
         if (statusBar->currentMessage().contains("Conectado")) {
             if (!serial->open(QIODevice::ReadOnly)) {
                 statusBar->showMessage("Error al reconectar: " + serial->errorString());
@@ -278,7 +345,6 @@ void MainWindow::onConfigClicked()
         autorangeCanal1 = autorangeCanal1Check->isChecked();
         autorangeCanal2 = autorangeCanal2Check->isChecked();
 
-        // Validar y actualizar los rangos manuales
         bool ok;
         double newMinCanal1 = minCanal1Edit->text().toDouble(&ok);
         if (ok) manualMinCanal1 = newMinCanal1;
@@ -292,7 +358,6 @@ void MainWindow::onConfigClicked()
         double newMaxCanal2 = maxCanal2Edit->text().toDouble(&ok);
         if (ok) manualMaxCanal2 = newMaxCanal2;
 
-        // Asegurarse de que el rango sea válido (mínimo < máximo)
         if (manualMinCanal1 >= manualMaxCanal1) {
             manualMinCanal1 = manualMaxCanal1 - 1;
         }
@@ -307,7 +372,6 @@ void MainWindow::onConfigClicked()
             plot2->yAxis->setRange(manualMinCanal2, manualMaxCanal2);
         }
 
-        // Actualizar las cabeceras
         headerTime = headerTimeEdit->text().isEmpty() ? "Tiempo" : headerTimeEdit->text();
         headerCanal1 = headerCanal1Edit->text().isEmpty() ? "Canal1" : headerCanal1Edit->text();
         headerCanal2 = headerCanal2Edit->text().isEmpty() ? "Canal2" : headerCanal2Edit->text();
@@ -343,7 +407,7 @@ void MainWindow::readData()
         canal1 = invertCanal1 ? -canal1 : canal1;
         canal2 = invertCanal2 ? -canal2 : canal2;
 
-        //qDebug() << "Canal1:" << canal1 << "Canal2:" << canal2;
+       // qDebug() << "Canal1:" << canal1 << "Canal2:" << canal2;
 
         allXData.append(time);
         allYData1.append(canal1);
@@ -362,21 +426,13 @@ void MainWindow::readData()
                 yData2.remove(0, yData2.size() - maxPoints);
             }
 
-            QVector<double> shiftedXData;
+            plot1->graph(0)->setData(xData, yData1, true);
+            plot2->graph(0)->setData(xData, yData2, true);
+
             double windowSize = 10.0;
             double latestTime = xData.last();
-            for (int i = 0; i < xData.size(); ++i) {
-                double shiftedX = xData[i] - (latestTime - windowSize);
-                while (shiftedX < 0) shiftedX += windowSize;
-                while (shiftedX > windowSize) shiftedX -= windowSize;
-                shiftedXData.append(shiftedX);
-            }
-
-            plot1->graph(0)->setData(shiftedXData, yData1, true);
-            plot2->graph(0)->setData(shiftedXData, yData2, true);
-
-            plot1->xAxis->setRange(0, windowSize);
-            plot2->xAxis->setRange(0, windowSize);
+            plot1->xAxis->setRange(latestTime - windowSize, latestTime);
+            plot2->xAxis->setRange(latestTime - windowSize, latestTime);
 
             if (autorangeCanal1) updateAutorange(plot1, yData1);
             if (autorangeCanal2) updateAutorange(plot2, yData2);
@@ -426,6 +482,45 @@ void MainWindow::onRecordClicked()
                                .arg(serial->isOpen() ? "Conectado" : "Desconectado")
                                .arg(isPlaying ? "Playing" : "Stopped")
                                .arg(isRecording ? "Recording" : "Not Recording"));
+}
+
+void MainWindow::onSignalsClicked()
+{
+    QDialog signalsDialog(this);
+    signalsDialog.setWindowTitle("Enviar Comando");
+
+    QFormLayout *layout = new QFormLayout;
+
+    QComboBox *commandCombo = new QComboBox;
+    commandCombo->addItems({"MODE1","MODE2","MODE3", "MODE4", "DBG01","DBG02","DBG03","DBG06"});
+    layout->addRow("Comando:", commandCombo);
+
+    QPushButton *sendButton = new QPushButton("Enviar");
+    QPushButton *cancelButton = new QPushButton("Cancelar");
+    QHBoxLayout *buttonLayout = new QHBoxLayout;
+    buttonLayout->addWidget(sendButton);
+    buttonLayout->addWidget(cancelButton);
+    layout->addRow(buttonLayout);
+
+    signalsDialog.setLayout(layout);
+
+    connect(sendButton, &QPushButton::clicked, &signalsDialog, &QDialog::accept);
+    connect(cancelButton, &QPushButton::clicked, &signalsDialog, &QDialog::reject);
+
+    if (signalsDialog.exec() == QDialog::Accepted) {
+        if (!serial->isOpen()) {
+            statusBar->showMessage("Error: Puerto serial no está conectado");
+            return;
+        }
+
+        QString command = commandCombo->currentText();
+        serial->write((command).toUtf8());
+        if (!serial->flush()) {
+            statusBar->showMessage("Error al enviar comando: " + serial->errorString());
+        } else {
+            statusBar->showMessage("Comando enviado: " + command);
+        }
+    }
 }
 
 void MainWindow::updateAutorange(QCustomPlot *plot, const QVector<double> &data)

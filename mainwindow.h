@@ -3,12 +3,13 @@
 
 #include <QMainWindow>
 #include <QSerialPort>
-#include "qcustomplot.h"  // Usa comillas, el INCLUDEPATH se encarga del resto
+#include <QSerialPortInfo>
+#include "qcustomplot.h"
 #include <QElapsedTimer>
 #include <QFile>
 #include <QStatusBar>
 #include <QPushButton>
-#include <QSerialPortInfo> // Agregado para QSerialPortInfo
+#include <QIcon> // Agregado para los iconos
 
 namespace Ui {
 class MainWindow;
@@ -28,6 +29,7 @@ private slots:
     void onPlayStopClicked(QPushButton *playStopButton);
     void onRecordClicked();
     void onConfigClicked();
+    void onSignalsClicked();
 
 private:
     Ui::MainWindow *ui;
@@ -55,6 +57,12 @@ private:
     QString headerTime;
     QString headerCanal1;
     QString headerCanal2;
+
+    // Iconos precargados para evitar pixelación
+    QIcon connectIcon;
+    QIcon disconnectIcon;
+    QIcon playIcon;
+    QIcon stopIcon;
 
     void updateAutorange(QCustomPlot *plot, const QVector<double> &data);
 };
