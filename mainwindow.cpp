@@ -8,6 +8,9 @@
 #include <QLineEdit>
 #include <QFormLayout>
 #include <QSettings>
+#include <QFileDialog>
+#include <QTemporaryFile>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -18,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     , sampleCounter(0)
     , isPlaying(false)
     , isRecording(false)
-    , file(new QFile("datos.csv", this))
+    , file(new QTemporaryFile("tempXXXXXX.csv", this)) // Inicialización como QTemporaryFile
     , invertCanal1(false)
     , invertCanal2(false)
     , autorangeCanal1(true)
@@ -27,6 +30,9 @@ MainWindow::MainWindow(QWidget *parent)
     , manualMaxCanal1(25000)
     , manualMinCanal2(-1000)
     , manualMaxCanal2(1000)
+    , headerTime("Tiempo")
+    , headerCanal1("ECG")
+    , headerCanal2("PPG")
 {
     ui->setupUi(this);
 
@@ -246,6 +252,7 @@ void MainWindow::onPlayStopClicked()
     }
 }
 
+
 void MainWindow::onRecordClicked()
 {
     if (isRecording) {
@@ -254,14 +261,29 @@ void MainWindow::onRecordClicked()
             file->close();
         }
         qDebug() << "Grabación detenida";
+
+        // Pedir nombre para guardar el archivo
+        QString fileName = QFileDialog::getSaveFileName(this, "Guardar grabación", "", "Archivos CSV (*.csv)");
+        if (!fileName.isEmpty()) {
+            QFile::copy(file->fileName(), fileName); // Copiar el archivo temporal al destino
+        }
+
         statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | Not Recording");
     } else {
         isRecording = true;
-        if (file->open(QIODevice::WriteOnly | QIODevice::Text)) {
+        // Usar un archivo temporal
+        delete file; // Eliminar el archivo anterior
+        file = new QTemporaryFile("tempXXXXXX.csv", this);
+        if (file->open(QIODevice::WriteOnly | QIODevice::Text)) { // Abrir con modo explícito
             QTextStream stream(file);
-            stream << "Tiempo,Canal1,Canal2\n";
-            qDebug() << "Grabación iniciada";
+            stream << headerTime << "," << headerCanal1 << "," << headerCanal2 << "\n";
+            qDebug() << "Grabación iniciada en archivo temporal:" << file->fileName();
             statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | Recording");
+        } else {
+            qDebug() << "Error al abrir archivo temporal:" << file->errorString();
+            isRecording = false;
+            delete file;
+            file = nullptr;
         }
     }
 }
@@ -309,6 +331,14 @@ void MainWindow::onConfigClicked()
     QLineEdit *maxCanal2Edit = new QLineEdit(QString::number(manualMaxCanal2));
     layout->addRow("Canal 2 Mín:", minCanal2Edit);
     layout->addRow("Canal 2 Máx:", maxCanal2Edit);
+
+    // Nuevos campos para las cabeceras
+    QLineEdit *headerTimeEdit = new QLineEdit(headerTime);
+    QLineEdit *headerCanal1Edit = new QLineEdit(headerCanal1);
+    QLineEdit *headerCanal2Edit = new QLineEdit(headerCanal2);
+    layout->addRow("Cabecera Tiempo:", headerTimeEdit);
+    layout->addRow("Cabecera ECG:", headerCanal1Edit);
+    layout->addRow("Cabecera PPG:", headerCanal2Edit);
 
     QPushButton *okButton = new QPushButton("Aceptar");
     QPushButton *cancelButton = new QPushButton("Cancelar");
