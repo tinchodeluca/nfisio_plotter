@@ -377,11 +377,5 @@ void MainWindow::onConfigClicked()
             plot2->yAxis->setRange(manualMinCanal2, manualMaxCanal2);
         }
 
-        if (serial->isOpen()) {
-            serial->close();
-            if (serial->open(QIODevice::ReadOnly)) {
-                qDebug() << "Puerto reabierto correctamente";
-            }
-        }
     }
 }
