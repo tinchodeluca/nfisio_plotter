@@ -2,13 +2,16 @@
 #include "ui_mainwindow.h"
 #include <QDebug>
 #include <QSerialPortInfo>
+#include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , serial(new QSerialPort(this))
-    , plot(new QCustomPlot(this))
+    , plot1(new QCustomPlot(this))
+    , plot2(new QCustomPlot(this))
     , time(0)
+    , sampleCounter(0)
 {
     ui->setupUi(this);
 
@@ -26,18 +29,35 @@ MainWindow::MainWindow(QWidget *parent)
     }
     connect(serial, &QSerialPort::readyRead, this, &MainWindow::readData);
 
-    setCentralWidget(plot);
-    plot->addGraph();
-    plot->addGraph();
-    plot->graph(0)->setPen(QPen(Qt::blue));
-    plot->graph(1)->setPen(QPen(Qt::red));
-    plot->xAxis->setLabel("Tiempo (s)");
-    plot->yAxis->setLabel("Valor");
-    plot->xAxis->setRange(0, 10);
-    plot->yAxis->setRange(-25000, 25000);
-    plot->setInteraction(QCP::iRangeDrag, true);
-    plot->setInteraction(QCP::iRangeZoom, true);
-    plot->setOpenGl(true);
+    // Configurar layout para dos gráficos
+    QVBoxLayout *layout = new QVBoxLayout;
+    layout->addWidget(plot1);
+    layout->addWidget(plot2);
+    QWidget *container = new QWidget;
+    container->setLayout(layout);
+    setCentralWidget(container);
+
+    // Configurar gráfico 1 (Canal 1)
+    plot1->addGraph();
+    plot1->graph(0)->setPen(QPen(Qt::blue));
+    plot1->xAxis->setLabel("Tiempo (s)");
+    plot1->yAxis->setLabel("Canal 1");
+    plot1->xAxis->setRange(0, 10);
+    plot1->yAxis->setRange(-25000, 25000);
+    plot1->setInteraction(QCP::iRangeDrag, true);
+    plot1->setInteraction(QCP::iRangeZoom, true);
+    plot1->setOpenGl(true);
+
+    // Configurar gráfico 2 (Canal 2)
+    plot2->addGraph();
+    plot2->graph(0)->setPen(QPen(Qt::red));
+    plot2->xAxis->setLabel("Tiempo (s)");
+    plot2->yAxis->setLabel("Canal 2");
+    plot2->xAxis->setRange(0, 10);
+    plot2->yAxis->setRange(-1000, 1000); // Ajusta según valores de canal2
+    plot2->setInteraction(QCP::iRangeDrag, true);
+    plot2->setInteraction(QCP::iRangeZoom, true);
+    plot2->setOpenGl(true);
 
     lastReplot.start();
 }
@@ -52,7 +72,6 @@ void MainWindow::readData()
 {
     buffer.append(serial->readAll());
     const QByteArray header = QByteArray::fromHex("EFBEADDE");
-    static int sampleCounter = 0;
 
     while (buffer.size() >= 12) {
         int headerPos = buffer.indexOf(header);
@@ -86,12 +105,14 @@ void MainWindow::readData()
                 yData2.remove(0, yData2.size() - maxPoints);
             }
 
-            plot->graph(0)->setData(xData, yData1);
-            plot->graph(1)->setData(xData, yData2);
-            plot->xAxis->setRange(time, 10, Qt::AlignRight);
+            plot1->graph(0)->setData(xData, yData1);
+            plot2->graph(0)->setData(xData, yData2);
+            plot1->xAxis->setRange(time, 10, Qt::AlignRight);
+            plot2->xAxis->setRange(time, 10, Qt::AlignRight);
 
             if (lastReplot.elapsed() >= 50) {
-                plot->replot(QCustomPlot::rpQueuedReplot);
+                plot1->replot(QCustomPlot::rpQueuedReplot);
+                plot2->replot(QCustomPlot::rpQueuedReplot);
                 lastReplot.restart();
             }
         }
@@ -99,7 +120,6 @@ void MainWindow::readData()
         time += 0.001;
     }
 
-    // Reducir acumulación en el buffer
     if (buffer.size() > 512) {
         buffer.clear();
     }

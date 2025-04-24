@@ -24,11 +24,13 @@ private slots:
 private:
     Ui::MainWindow *ui;
     QSerialPort *serial;
-    QCustomPlot *plot;
+    QCustomPlot *plot1; // Canal 1
+    QCustomPlot *plot2; // Canal 2
     QByteArray buffer;
     QVector<double> xData, yData1, yData2;
     double time;
     QElapsedTimer lastReplot;
+    int sampleCounter;
 };
 
 #endif // MAINWINDOW_H
