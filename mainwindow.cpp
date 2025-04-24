@@ -8,7 +8,6 @@
 #include <QLineEdit>
 #include <QFormLayout>
 #include <QSettings>
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -31,16 +30,19 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // Inicializar la barra de estado
+    statusBar = new QStatusBar(this);
+    setStatusBar(statusBar);
+    statusBar->showMessage("Desconectado | Stopped | Not Recording");
+
     QSettings settings("MyApp", "SerialPlotter");
     QString lastPort = settings.value("lastPort", "COM9").toString();
     int lastBaud = settings.value("lastBaud", 230400).toInt();
-
     serial->setPortName(lastPort);
     serial->setBaudRate(lastBaud);
 
     connect(serial, &QSerialPort::readyRead, this, &MainWindow::readData);
 
-    // Botones
     QHBoxLayout *buttonLayout = new QHBoxLayout;
     QPushButton *connectButton = new QPushButton("Connect", this);
     QPushButton *playStopButton = new QPushButton("Play/Stop", this);
@@ -51,7 +53,6 @@ MainWindow::MainWindow(QWidget *parent)
     buttonLayout->addWidget(recordButton);
     buttonLayout->addWidget(configButton);
 
-    // Layout principal
     QVBoxLayout *mainLayout = new QVBoxLayout;
     mainLayout->addLayout(buttonLayout);
     mainLayout->addWidget(plot1);
@@ -60,28 +61,25 @@ MainWindow::MainWindow(QWidget *parent)
     container->setLayout(mainLayout);
     setCentralWidget(container);
 
-    // Conectar botones
     connect(connectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
     connect(playStopButton, &QPushButton::clicked, this, &MainWindow::onPlayStopClicked);
     connect(recordButton, &QPushButton::clicked, this, &MainWindow::onRecordClicked);
     connect(configButton, &QPushButton::clicked, this, &MainWindow::onConfigClicked);
 
-    // Configurar gráfico 1 (Canal 1)
     plot1->addGraph();
     plot1->graph(0)->setPen(QPen(Qt::blue));
     plot1->xAxis->setLabel("Tiempo (s)");
-    plot1->yAxis->setLabel("Canal 1");
+    plot1->yAxis->setLabel("Canal 1 (ECG)");
     plot1->xAxis->setRange(0, 10);
     plot1->yAxis->setRange(manualMinCanal1, manualMaxCanal1);
     plot1->setInteraction(QCP::iRangeDrag, true);
     plot1->setInteraction(QCP::iRangeZoom, true);
     plot1->setOpenGl(true);
 
-    // Configurar gráfico 2 (Canal 2)
     plot2->addGraph();
     plot2->graph(0)->setPen(QPen(Qt::red));
     plot2->xAxis->setLabel("Tiempo (s)");
-    plot2->yAxis->setLabel("Canal 2");
+    plot2->yAxis->setLabel("Canal 2 (PPG)");
     plot2->xAxis->setRange(0, 10);
     plot2->yAxis->setRange(manualMinCanal2, manualMaxCanal2);
     plot2->setInteraction(QCP::iRangeDrag, true);
@@ -90,7 +88,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     lastReplot.start();
 }
-
 MainWindow::~MainWindow()
 {
     serial->close();
@@ -183,19 +180,43 @@ void MainWindow::updateAutorange(QCustomPlot *plot, const QVector<double> &data)
 {
     if (data.isEmpty()) return;
 
-    const int windowSize = 1000;
-    double minVal = data.last();
-    double maxVal = data.last();
+    // Ignorar las primeras 100 muestras (como ajustaste)
+    const int ignoreInitialPoints = 100;
+    const int windowSize = 1000; // Ventana para calcular el rango
 
-    int start = qMax(0, data.size() - windowSize);
+    // Comenzar después de los puntos iniciales
+    int start = qMax(ignoreInitialPoints, data.size() - windowSize);
+    QVector<double> windowData;
     for (int i = start; i < data.size(); ++i) {
-        minVal = qMin(minVal, data[i]);
-        maxVal = qMax(maxVal, data[i]);
+        windowData.append(data[i]);
     }
 
-    double range = maxVal - minVal;
-    double margin = range * 0.2;
-    plot->yAxis->setRange(minVal - margin, maxVal + margin);
+    if (windowData.isEmpty()) return;
+
+    // Ordenar los datos para calcular percentiles y descartar picos
+    std::sort(windowData.begin(), windowData.end());
+
+    // Usar percentil 5 y 95 para descartar valores extremos
+    int lowerIndex = windowData.size() * 0.05; // Percentil 5
+    int upperIndex = windowData.size() * 0.95; // Percentil 95
+    double minVal = windowData[lowerIndex];
+    double maxVal = windowData[upperIndex];
+
+    // Calcular el promedio para centrar el rango
+    double sum = 0;
+    int count = 0;
+    for (int i = lowerIndex; i <= upperIndex; ++i) {
+        sum += windowData[i];
+        count++;
+    }
+    double avg = sum / count;
+
+    // Centrar el rango en el promedio con un margen basado en la distancia al min/max
+    double rangeToMin = avg - minVal;
+    double rangeToMax = maxVal - avg;
+    double halfRange = qMax(rangeToMin, rangeToMax); // Tomar el mayor para simetría
+    double margin = halfRange * 0.1; // Margen del 10%
+    plot->yAxis->setRange(avg - halfRange - margin, avg + halfRange + margin);
 }
 
 void MainWindow::onConnectClicked()
@@ -203,11 +224,14 @@ void MainWindow::onConnectClicked()
     if (serial->isOpen()) {
         serial->close();
         qDebug() << "Puerto cerrado";
+        statusBar->showMessage("Desconectado | " + QString(isPlaying ? "Playing" : "Stopped") + " | " + QString(isRecording ? "Recording" : "Not Recording"));
     } else {
         if (serial->open(QIODevice::ReadOnly)) {
             qDebug() << "Puerto abierto correctamente";
+            statusBar->showMessage("Conectado | " + QString(isPlaying ? "Playing" : "Stopped") + " | " + QString(isRecording ? "Recording" : "Not Recording"));
         } else {
             qDebug() << "Error al abrir puerto:" << serial->errorString();
+            statusBar->showMessage("Error al conectar | " + QString(isPlaying ? "Playing" : "Stopped") + " | " + QString(isRecording ? "Recording" : "Not Recording"));
         }
     }
 }
@@ -216,6 +240,7 @@ void MainWindow::onPlayStopClicked()
 {
     isPlaying = !isPlaying;
     qDebug() << "Play/Stop:" << (isPlaying ? "Playing" : "Stopped");
+    statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | " + (isRecording ? "Recording" : "Not Recording"));
     if (isPlaying) {
         lastReplot.start();
     }
@@ -229,16 +254,17 @@ void MainWindow::onRecordClicked()
             file->close();
         }
         qDebug() << "Grabación detenida";
+        statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | Not Recording");
     } else {
         isRecording = true;
         if (file->open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream stream(file);
             stream << "Tiempo,Canal1,Canal2\n";
             qDebug() << "Grabación iniciada";
+            statusBar->showMessage(QString(serial->isOpen() ? "Conectado" : "Desconectado") + " | " + (isPlaying ? "Playing" : "Stopped") + " | Recording");
         }
     }
 }
-
 void MainWindow::onConfigClicked()
 {
     QDialog configDialog(this);

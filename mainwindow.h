@@ -30,6 +30,7 @@ private:
     void updateAutorange(QCustomPlot *plot, const QVector<double> &data);
 
     Ui::MainWindow *ui;
+    QStatusBar *statusBar;
     QSerialPort *serial;
     QCustomPlot *plot1;
     QCustomPlot *plot2;
