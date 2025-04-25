@@ -7,5 +7,6 @@
         <file>icons/play-solid.svg</file>
         <file>icons/stop-solid.svg</file>
 		<file>icons/wave-square-solid.svg</file>
+		<file>icons/pause-solid.svg</file>
     </qresource>
 </RCC>

@@ -39,7 +39,7 @@ MainWindow::MainWindow(QWidget *parent)
     , connectIcon(QIcon(":/icons/link-solid.svg"))
     , disconnectIcon(QIcon(":/icons/link-slash-solid.svg"))
     , playIcon(QIcon(":/icons/play-solid.svg"))
-    , stopIcon(QIcon(":/icons/stop-solid.svg"))
+    , stopIcon(QIcon(":/icons/pause-solid.svg"))
 {
     ui->setupUi(this);
 
@@ -282,9 +282,6 @@ void MainWindow::onConfigClicked()
 
     // Estilos CSS para el diálogo
     configDialog.setStyleSheet(R"(
-        QDialog {
-            background-color: #FAF8F8;
-        }
         QGroupBox {
             font-weight: bold;
             border: 1px solid #CCC;
@@ -492,7 +489,18 @@ void MainWindow::onSignalsClicked()
     QFormLayout *layout = new QFormLayout;
 
     QComboBox *commandCombo = new QComboBox;
-    commandCombo->addItems({"MODE1","MODE2","MODE3", "MODE4", "DBG01","DBG02","DBG03","DBG06"});
+    commandCombo->addItems({"MODE1",
+                            "MODE2",
+                            "MODE3",
+                            "MODE4",
+                            "DBG01",
+                            "DBG02",
+                            "DBG03",
+                            "DBG04",
+                            "STOP",
+                            "RST",
+                            "USB",
+                            "UART"});
     layout->addRow("Comando:", commandCombo);
 
     QPushButton *sendButton = new QPushButton("Enviar");
